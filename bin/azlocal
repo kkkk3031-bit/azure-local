@@ -1,0 +1,33 @@
+#!/bin/bash
+# azlocal — local Azure (Azurite emulator) control + az CLI wiring
+# Well-known dev-account connection string (same on every Azurite install)
+export AZURE_STORAGE_CONNECTION_STRING="DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;"
+
+up() { (exec 3<>/dev/tcp/127.0.0.1/10000) 2>/dev/null; }
+
+case "$1" in
+  start)
+    if up; then echo "azurite already running"; exit 0; fi
+    nohup azurite --silent --skipApiVersionCheck --location ~/azurite-data --blobHost 127.0.0.1 --queueHost 127.0.0.1 --tableHost 127.0.0.1 >> ~/azurite-data/azurite.log 2>&1 &
+    sleep 2
+    up && echo "azurite started (blob:10000 queue:10001 table:10002)" || { echo "FAILED - see ~/azurite-data/azurite.log"; exit 1; }
+    ;;
+  stop)   pkill -f "azurite-data" && echo stopped ;;
+  status) up && echo "RUNNING (ports 10000-10002)" || echo "STOPPED" ;;
+  env)    echo "export AZURE_STORAGE_CONNECTION_STRING='$AZURE_STORAGE_CONNECTION_STRING'" ;;
+  test)
+    az storage container create -n testbox -o none &&
+    echo "hello from local azure $(date)" > /tmp/azlocal-test.txt &&
+    az storage blob upload -c testbox -f /tmp/azlocal-test.txt -n hello.txt --overwrite -o none &&
+    az storage blob list -c testbox --query "[].name" -o tsv &&
+    echo "OK: local Azure storage works"
+    ;;
+  up)
+    [ -f "$2" ] || { echo "usage: azlocal up <file>"; exit 1; }
+    az storage container create -n mybox -o none
+    az storage blob upload -c mybox -f "$2" -n "$(basename "$2")" --overwrite -o none &&
+    echo "uploaded: $(basename "$2")"
+    ;;
+  ls) az storage blob list -c mybox -o table 2>/dev/null || echo "(empty - upload something first: azlocal up <file>)" ;;
+  *) echo "usage: azlocal start|stop|status|test|env|up <file>|ls" ;;
+esac
