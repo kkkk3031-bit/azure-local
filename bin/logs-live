@@ -1,0 +1,31 @@
+#!/bin/bash
+# logs-live — realtime console of ALL services on this VPS, timestamped + labeled
+# usage: logs-live            (everything)
+#        logs-live fivem      (one service: fivem|beammp|azure|twitter|webfix|backup)
+F_FIVEM=~/fivem/fxserver.log
+F_FIVEMWD=~/fivem/watchdog.log
+F_BEAMMP=~/beammp/Server.log
+F_AZURE=~/azurite-data/azurite.log
+F_TW=~/twitter-dl/server.log
+F_WEBFIX=~/.cache/webcheck/webfix.log
+F_BACKUP=~/fivem/backup.log
+
+pick() {
+  case "$1" in
+    fivem)   echo "$F_FIVEM $F_FIVEMWD";;
+    beammp)  echo "$F_BEAMMP";;
+    azure)   echo "$F_AZURE";;
+    twitter) echo "$F_TW";;
+    webfix)  echo "$F_WEBFIX";;
+    backup)  echo "$F_BACKUP";;
+    *)       echo "$F_FIVEM $F_BEAMMP $F_AZURE $F_TW $F_WEBFIX";;
+  esac
+}
+
+FILES=$(pick "$1")
+echo "── LIVE LOGS (Ctrl+C to stop) ── $(date '+%F %T')"
+for f in $FILES; do [ -f "$f" ] && echo "   watching: $f"; done
+# tail -F survives log rotation; awk stamps each line with time + short filename
+tail -n 5 -F $FILES 2>/dev/null | awk '
+  /^==> .* <==$/ { src=$2; sub(".*/","",src); next }
+  { printf "\033[33m%s\033[0m \033[36m[%s]\033[0m %s\n", strftime("%H:%M:%S"), src, $0; fflush() }'
